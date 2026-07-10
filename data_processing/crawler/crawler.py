@@ -30,7 +30,7 @@ from baike_disease_crawler import (
 )
 
 
-BROWSER_PROFILE_DIR = ".baike_browser_profile"
+BROWSER_PROFILE_DIR = Path(__file__).resolve().parent / ".baike_browser_profile"
 PAGE_SETTLE_SECONDS = 2
 MIN_SECTION_TEXT_LENGTH = 80
 

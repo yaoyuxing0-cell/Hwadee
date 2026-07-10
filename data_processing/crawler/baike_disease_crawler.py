@@ -16,6 +16,7 @@ import socket
 import ssl
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import quote, urljoin, urlsplit
@@ -26,7 +27,7 @@ from bs4.element import Tag
 from pymongo import MongoClient
 
 
-CONFIG_PATH = "crawler_config.json"
+CONFIG_PATH = Path(__file__).resolve().with_name("crawler_config.json")
 BAIKE_PAGE_URL = "https://baike.baidu.com/item/{keyword}"
 BAIKE_CARD_API = (
     "https://baike.baidu.com/api/openapi/BaikeLemmaCardApi"
