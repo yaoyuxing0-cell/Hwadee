@@ -4,10 +4,15 @@
 """
 from neo4j import GraphDatabase
 
-# 实际 Neo4j 数据模型中的 5 种节点标签
+# 实际 Neo4j 数据模型中的 5 种节点标签（顺序即 category 编号）
 _NODE_LABELS = ['Disease', 'Symptom', 'Drug', 'Examination', 'Treatment']
-# Cypher 中用于匹配任意一种标签的 WHERE 子句
-_LABEL_FILTER = '(' + ' OR '.join(f'n:{l}' for l in _NODE_LABELS) + ')'
+_CATEGORY_MAP = {label: i for i, label in enumerate(_NODE_LABELS)}
+# Disease→0, Symptom→1, Drug→2, Examination→3, Treatment→4
+
+
+def _label_filter(v: str) -> str:
+    """生成 Cypher WHERE 条件：匹配变量 v 的标签是 5 种之一"""
+    return '(' + ' OR '.join(f'{v}:{l}' for l in _NODE_LABELS) + ')'
 
 
 class KGService:
@@ -24,7 +29,7 @@ class KGService:
         """关键词模糊搜索实体名称列表"""
         cypher = f"""
             MATCH (n)
-            WHERE n.name CONTAINS $keyword AND {_LABEL_FILTER}
+            WHERE n.name CONTAINS $keyword AND {_label_filter('n')}
             RETURN n.name AS name
             ORDER BY n.name
             LIMIT $limit
@@ -42,7 +47,7 @@ class KGService:
         返回 {nodes: [...], links: [...]}，节点不存在时返回 None
         """
         # 第一步：验证实体是否存在
-        exists_cypher = f"MATCH (n {{name: $name}}) WHERE {_LABEL_FILTER} RETURN count(n) > 0 AS ok"
+        exists_cypher = f"MATCH (n {{name: $name}}) WHERE {_label_filter('n')} RETURN count(n) > 0 AS ok"
         with self.driver.session() as session:
             if not session.run(exists_cypher, name=entity_name).single()["ok"]:
                 return None
@@ -50,9 +55,9 @@ class KGService:
         # 第二步：查中心节点 + 一度邻居
         cypher = f"""
             MATCH (center {{name: $name}})
-            WHERE {_LABEL_FILTER}
+            WHERE {_label_filter('center')}
             OPTIONAL MATCH (center)-[r]-(neighbor)
-            WHERE {_LABEL_FILTER}
+            WHERE {_label_filter('neighbor')}
             RETURN center.name AS center_name,
                    [l IN labels(center) WHERE l IN $node_labels][0] AS center_category,
                    type(r) AS relation,
@@ -68,9 +73,9 @@ class KGService:
 
             for record in result:
                 c_name = record["center_name"]
-                c_cat = record.get("center_category") or ""
+                c_cat = _CATEGORY_MAP.get(record.get("center_category") or "", 0)
                 n_name = record["neighbor_name"]
-                n_cat = record.get("neighbor_category") or ""
+                n_cat = _CATEGORY_MAP.get(record.get("neighbor_category") or "", 0)
                 rel = record["relation"]
 
                 # 中心节点（可能出现多次，每次用最新 category 覆盖）
@@ -122,19 +127,19 @@ class KGService:
         返回格式：
         {
             "name": "高血压",
-            "category": "Disease",
-            "definition": "百科定义...",
-            "indications": "适应症/诊疗范围...",
-            "badReactions": "不良反应/注意事项..."
+            "category": 0,      # Disease→0, Symptom→1, Drug→2, Examination→3, Treatment→4
+            "definition": "...",
+            "indications": "...",
+            "badReactions": "..."
         }
         """
-        cypher_check = f"MATCH (n {{name: $name}}) WHERE {_LABEL_FILTER} RETURN n LIMIT 1"
+        cypher_check = f"MATCH (n {{name: $name}}) WHERE {_label_filter('n')} RETURN n LIMIT 1"
         cypher_attrs = f"""
             MATCH (n {{name: $name}})
-            WHERE {_LABEL_FILTER}
+            WHERE {_label_filter('n')}
             RETURN n.name AS name,
                    [l IN labels(n) WHERE l IN $node_labels][0] AS category,
-                   n.简介 AS definition
+                   n.description AS definition
         """
 
         with self.driver.session() as session:
@@ -146,7 +151,7 @@ class KGService:
             attr = session.run(cypher_attrs, name=name, node_labels=_NODE_LABELS).single()
             detail = {
                 "name": attr["name"],
-                "category": attr.get("category") or "",
+                "category": _CATEGORY_MAP.get(attr.get("category") or "", 0),
                 "definition": attr.get("definition") or "",
             }
 
@@ -162,12 +167,11 @@ class KGService:
 
     def _get_aggregated_relation(self, entity_name: str, relation_types: list[str]) -> str:
         """从指定关系类型聚合邻居节点值，用分号连接"""
-        m_label_filter = '(' + ' OR '.join(f'm:{l}' for l in _NODE_LABELS) + ')'
         cypher = f"""
             MATCH (n {{name: $name}})-[r]-(m)
             WHERE type(r) IN $rel_types
-              AND {_LABEL_FILTER}
-              AND {m_label_filter}
+              AND {_label_filter('n')}
+              AND {_label_filter('m')}
             RETURN m.name AS value
         """
         with self.driver.session() as session:
