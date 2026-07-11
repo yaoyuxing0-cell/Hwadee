@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .baike_browser_profile/
 *.log
+graph_generating/graph_params.local.json
 nlp/output/
 nlp/models/
 nlp/output_cleaned*/
