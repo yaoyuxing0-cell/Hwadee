@@ -1,0 +1,29 @@
+# 敏感配置文件
+config.py
+
+# 需求文档
+*.docx
+STRUCTURE.md
+
+# 测试文件
+test/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
