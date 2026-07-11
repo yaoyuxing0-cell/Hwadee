@@ -157,7 +157,7 @@ class KGService:
 
             # indications / badReactions：从关系聚合
             detail["indications"] = self._get_aggregated_relation(
-                name, ["TREATS", "TREATED_BY"]
+                name, ["TREATS_DISEASE", "TREATED_BY"]
             )
             detail["badReactions"] = self._get_aggregated_relation(
                 name, ["HAS_SYMPTOM", "HAS_COMPLICATION"]
