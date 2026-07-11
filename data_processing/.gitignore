@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+.baike_browser_profile/
+*.log
+nlp/output/
