@@ -1,0 +1,10 @@
+{
+  "uri": "bolt://localhost:7687",
+  "user": "neo4j",
+  "password": "",
+  "database": "",
+  "csv_dir": "..\\nlp\\output_cleaned",
+  "clear": false,
+  "check": false,
+  "batch_size": 500
+}

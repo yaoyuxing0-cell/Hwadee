@@ -4,5 +4,6 @@ playwright
 jieba
 spacy
 click
+neo4j
 transformers
 torch
