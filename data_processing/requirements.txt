@@ -1,3 +1,8 @@
 pymongo
 beautifulsoup4
 playwright
+jieba
+spacy
+click
+transformers
+torch

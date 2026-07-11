@@ -1,0 +1,8 @@
+{
+  "keyword": "null",
+  "limit": 0,
+  "bert_model": ".\\nlp\\models\\bert-base-chinese",
+  "raw_output_dir": ".\\nlp\\output",
+  "cleaned_output_dir": ".\\nlp\\output_cleaned_0.60",
+  "min_confidence": 0.60
+}
