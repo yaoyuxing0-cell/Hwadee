@@ -4,3 +4,5 @@ __pycache__/
 .baike_browser_profile/
 *.log
 nlp/output/
+nlp/models/
+nlp/output_cleaned*/
