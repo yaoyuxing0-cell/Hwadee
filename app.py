@@ -2,6 +2,9 @@
 医疗知识图谱 — Flask 后端服务
 提供 6 个 RESTful API 接口
 """
+import os
+import traceback
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from kg_service import KGService
@@ -13,11 +16,28 @@ CORS(app)
 app.config['JSON_AS_ASCII'] = False
 
 
-# 强制所有响应使用 UTF-8，解决中文 latin-1 编码报错
 @app.after_request
-def force_utf8(response):
+def enforce_utf8(response):
+    """强制所有响应使用 UTF-8 编码，防止 latin-1 编码报错"""
     response.headers['Content-Type'] = 'application/json; charset=utf-8'
     return response
+
+
+# 捕获所有异常，返回 JSON 而非 HTML，彻底解决中文 latin-1 编码报错
+@app.errorhandler(Exception)
+def handle_exception(e):
+    traceback.print_exc()
+    return fail(str(e), 500)
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    return fail("接口不存在", 404)
+
+
+@app.errorhandler(405)
+def handle_405(e):
+    return fail("请求方法不支持", 405)
 
 kg = KGService(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD)
 user_svc = UserService()
@@ -169,4 +189,5 @@ if __name__ == '__main__':
     print("  POST /api/v1/user/login")
     print("  GET  /api/v1/recommend/user-feed?username=xxx")
     print("=" * 50)
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    DEBUG = os.environ.get('FLASK_DEBUG', '0') == '1'
+    app.run(host='0.0.0.0', port=8080, debug=DEBUG)
