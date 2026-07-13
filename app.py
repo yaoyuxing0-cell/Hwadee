@@ -3,12 +3,21 @@
 提供 6 个 RESTful API 接口
 """
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from kg_service import KGService
 from user_service import UserService
 from config import NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD
 
 app = Flask(__name__)
+CORS(app)
 app.config['JSON_AS_ASCII'] = False
+
+
+# 强制所有响应使用 UTF-8，解决中文 latin-1 编码报错
+@app.after_request
+def force_utf8(response):
+    response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    return response
 
 kg = KGService(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD)
 user_svc = UserService()
