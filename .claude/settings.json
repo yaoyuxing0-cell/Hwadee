@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m 'feat: 联通前后端API，支持后端调用与本地降级双模式 *)",
+      "Bash(git config *)",
+      "Bash(git push *)"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 // ==================== 0. API 配置与工具函数 ====================
-const API_BASE = '/api/v1';
+const API_BASE = 'http://192.168.62.132:8080/api/v1';
 const API_TIMEOUT_MS = 5000;
 
 /**
@@ -28,7 +28,7 @@ async function apiGet(path) {
     try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-        const resp = await fetch(API_BASE + path, { signal: controller.signal });
+        const resp = await fetch(API_BASE + path, { signal: controller.signal, headers: { 'Accept-Charset': 'utf-8' } });
         clearTimeout(timer);
         if (!resp.ok) return null;
         const json = await resp.json();
@@ -54,7 +54,7 @@ async function apiPost(path, body) {
         const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
         const resp = await fetch(API_BASE + path, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json; charset=utf-8', 'Accept-Charset': 'utf-8' },
             body: JSON.stringify(body),
             signal: controller.signal
         });
@@ -536,7 +536,7 @@ async function updateDetails(nodeName) {
     if (detail) {
         renderDetailsHTML(detailContent, {
             name: detail.name || nodeName,
-            category: detail.category || '',
+            category: (detail.category != null) ? detail.category : '',
             definition: detail.definition || '暂无',
             indications: detail.indications || '暂无',
             badReactions: detail.badReactions || ''
@@ -553,7 +553,10 @@ async function updateDetails(nodeName) {
 }
 
 function renderDetailsHTML(c, d) {
-    c.innerHTML = `<h4>【${d.name}】</h4><b>实体类型：</b>${d.category || '未知'}<br><br><b>医学定义：</b><br>${d.definition || '暂无'}<br><br><b>临床指南：</b><br>${d.indications || '暂无'}`;
+    const catDisplay = (typeof d.category === 'number' && CATEGORY_NAMES[d.category])
+        ? CATEGORY_NAMES[d.category]
+        : (d.category || '未知');
+    c.innerHTML = `<h4>【${d.name}】</h4><b>实体类型：</b>${catDisplay}<br><br><b>医学定义：</b><br>${d.definition || '暂无'}<br><br><b>临床指南：</b><br>${d.indications || '暂无'}`;
 }
 
 // 图谱节点点击事件
