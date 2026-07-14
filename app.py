@@ -1,6 +1,6 @@
 """
 医疗知识图谱 — Flask 后端服务
-提供 6 个 RESTful API 接口
+提供 7 个 RESTful API 接口
 """
 import os
 import traceback
@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from kg_service import KGService
 from user_service import UserService
-from config import NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD
+from config import NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, CATEGORY_TO_LABEL
 
 app = Flask(__name__)
 CORS(app)
@@ -60,8 +60,12 @@ def search_suggest():
     if not keyword:
         return fail("keyword is required")
 
+    category = request.args.get('category', type=int)
+    if category is not None and category not in CATEGORY_TO_LABEL:
+        return fail("category must be 0-4 (0=Disease,1=Symptom,2=Drug,3=Examination,4=Treatment)")
+
     try:
-        names = kg.search_suggest(keyword)
+        names = kg.search_suggest(keyword, category=category)
         return ok(names)
     except Exception as e:
         return fail(str(e), 500)
@@ -78,10 +82,33 @@ def graph_data():
 
     depth = request.args.get('depth', 1, type=int)
 
+    category = request.args.get('category', type=int)
+    if category is not None and category not in CATEGORY_TO_LABEL:
+        return fail("category must be 0-4 (0=Disease,1=Symptom,2=Drug,3=Examination,4=Treatment)")
+
     try:
-        data = kg.get_graph_data(entity_name, depth)
+        data = kg.get_graph_data(entity_name, depth, category=category)
         if data is None:
             return fail(f"entity '{entity_name}' not found", 404)
+        return ok(data)
+    except Exception as e:
+        return fail(str(e), 500)
+
+
+# ================================================================
+# 接口 2.5：图谱增量扩展（点击节点展开邻居）
+# ================================================================
+@app.route('/api/v1/graph/expand')
+def graph_expand():
+    entity_name = request.args.get('entityName', '').strip()
+    exclude_raw = request.args.get('exclude', '')
+    exclude_ids = [x.strip() for x in exclude_raw.split(',') if x.strip()]
+
+    if not entity_name:
+        return fail("entityName is required")
+
+    try:
+        data = kg.get_expand_data(entity_name, exclude_ids)
         return ok(data)
     except Exception as e:
         return fail(str(e), 500)
@@ -182,8 +209,9 @@ if __name__ == '__main__':
     print("医疗知识图谱 API 服务")
     print(f"Neo4j: {NEO4J_URL}")
     print("接口:")
-    print("  GET  /api/v1/search/suggest?keyword=xxx")
-    print("  GET  /api/v1/graph/data?entityName=xxx&depth=1")
+    print("  GET  /api/v1/search/suggest?keyword=xxx[&category=0-4]")
+    print("  GET  /api/v1/graph/data?entityName=xxx&depth=1[&category=0-4]")
+    print("  GET  /api/v1/graph/expand?entityName=xxx&exclude=a,b")
     print("  GET  /api/v1/entity/detail?name=xxx")
     print("  POST /api/v1/user/register")
     print("  POST /api/v1/user/login")
