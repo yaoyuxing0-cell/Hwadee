@@ -1,5 +1,5 @@
 // ==================== 0. API 配置与工具函数 ====================
-const API_BASE = 'http://192.168.62.132:8080/api/v1';
+const API_BASE = 'http://192.168.62.98:8080/api/v1';
 const API_TIMEOUT_MS = 5000;
 
 /**
@@ -87,6 +87,84 @@ const CATEGORY_NAMES = [
     'Disease (疾病)', 'Symptom (症状)', 'Drug (药品)', 'Examination (检查)',
     'Treatment (治疗)', 'Department (科室)', 'Complication (并发症)', 'Population (特殊人群)'
 ];
+
+// 后端新格式 nodeType 字符串 → ECharts category 整数
+const NODE_TYPE_TO_CATEGORY = {
+    'Disease': 0, 'Symptom': 1, 'Drug': 2,
+    'Examination': 3, 'Treatment': 4,
+    'Department': 5, 'Complication': 6, 'Population': 7
+};
+
+/** 当前图谱数据（旧格式），用于增量扩展 */
+let currentGraphData = null;
+/** 上一个被点击的节点名，用于点击链上裁剪旧节点 */
+let lastClickedNodeName = null;
+
+/**
+ * 将后端新格式转为 ECharts 旧格式
+ * 新：nodes[{id,caption,nodeType,color,size,description}] + relationships[{from,to,type,caption,color}]
+ * 旧：nodes[{name,category,symbolSize}] + links[{source,target,label}]
+ */
+function transformGraphData(apiData) {
+    if (!apiData || !apiData.nodes || apiData.nodes.length === 0) return null;
+    const first = apiData.nodes[0];
+    // 已是旧格式（有 name 无 nodeType）→ 原样返回
+    if (first.name !== undefined && first.nodeType === undefined) return apiData;
+
+    const nodes = apiData.nodes.map(n => ({
+        name: n.id,
+        category: NODE_TYPE_TO_CATEGORY[n.nodeType] != null ? NODE_TYPE_TO_CATEGORY[n.nodeType] : 0,
+        symbolSize: n.size || 30,
+        description: n.description || '',
+        nodeType: n.nodeType || '',
+        itemStyle: n.color ? { color: n.color } : undefined
+    }));
+
+    const links = (apiData.relationships || []).map(r => ({
+        source: r.from,
+        target: r.to,
+        label: { show: true, formatter: r.caption || r.type || '' },
+        lineStyle: r.color ? { color: r.color } : undefined
+    }));
+
+    return { nodes, links, categories: [] };
+}
+
+/**
+ * 从节点列表中按类型多样性选取最多 maxCount 个节点
+ * 优先选符号大的，同时保证不同类型都有代表（轮询选取）
+ */
+function selectDiverseNodes(nodes, maxCount) {
+    if (nodes.length <= maxCount) return nodes;
+
+    // 按 category 分组，每组内按 symbolSize 降序排列
+    const groups = {};
+    nodes.forEach(n => {
+        const cat = n.category != null ? n.category : 0;
+        if (!groups[cat]) groups[cat] = [];
+        groups[cat].push(n);
+    });
+    Object.values(groups).forEach(g => g.sort((a, b) => (b.symbolSize || 30) - (a.symbolSize || 30)));
+
+    // 轮询从每组取一个，直到满 maxCount
+    const result = [];
+    const indices = {};  // groupKey → 已取到的位置
+    Object.keys(groups).forEach(k => { indices[k] = 0; });
+
+    while (result.length < maxCount) {
+        let added = false;
+        for (const cat of Object.keys(groups)) {
+            if (indices[cat] < groups[cat].length) {
+                result.push(groups[cat][indices[cat]]);
+                indices[cat]++;
+                added = true;
+                if (result.length >= maxCount) break;
+            }
+        }
+        if (!added) break;  // 所有组都取完了
+    }
+    return result;
+}
 
 // 图谱核心基础数据集（后端不可用时的本地降级数据）
 const localGraphData = {
@@ -186,22 +264,45 @@ renderGraph(localGraphData);
 // 后台尝试从 Neo4j 后端加载初始图谱（默认展示"高血压"）
 (async function loadInitialGraph() {
     const data = await apiGet('/graph/data?entityName=' + encodeURIComponent('高血压') + '&depth=1');
-    if (data && data.nodes && data.nodes.length > 0) {
-        renderGraph(data);
-        // 更新建议词列表
-        updateLocalKeywordList(data.nodes);
+    if (data) {
+        const graphData = transformGraphData(data);
+        if (graphData && graphData.nodes && graphData.nodes.length > 0) {
+            const selected = selectDiverseNodes(graphData.nodes, 10);
+            const selNames = new Set(selected.map(n => n.name));
+            const filtered = {
+                nodes: selected,
+                links: (graphData.links || []).filter(l => selNames.has(l.source) && selNames.has(l.target))
+            };
+            currentGraphData = filtered;
+            lastClickedNodeName = '高血压';
+            renderGraph(filtered);
+            updateLocalKeywordList(filtered.nodes);
+        }
     }
 })();
 
 /**
  * 加载并渲染指定实体的图谱
  */
-async function loadGraphForEntity(entityName) {
-    const data = await apiGet('/graph/data?entityName=' + encodeURIComponent(entityName) + '&depth=1');
-    if (data && data.nodes && data.nodes.length > 0) {
-        renderGraph(data);
-        updateLocalKeywordList(data.nodes);
-        return true;
+async function loadGraphForEntity(entityName, category) {
+    let url = '/graph/data?entityName=' + encodeURIComponent(entityName) + '&depth=1';
+    if (category != null && category !== '') url += '&category=' + encodeURIComponent(category);
+    const data = await apiGet(url);
+    if (data) {
+        const graphData = transformGraphData(data);
+        if (graphData && graphData.nodes && graphData.nodes.length > 0) {
+            const selected = selectDiverseNodes(graphData.nodes, 10);
+            const selNames = new Set(selected.map(n => n.name));
+            const filtered = {
+                nodes: selected,
+                links: (graphData.links || []).filter(l => selNames.has(l.source) && selNames.has(l.target))
+            };
+            currentGraphData = filtered;
+            lastClickedNodeName = entityName;
+            renderGraph(filtered);
+            updateLocalKeywordList(filtered.nodes);
+            return true;
+        }
     }
     return false;
 }
@@ -379,6 +480,7 @@ function enterMainSystem(username, role, preferences) {
 
     document.getElementById('logout-btn').addEventListener('click', () => { location.reload(); });
 
+    renderHistoryPanel();
     updateUserIntelligenceFeed();
     myChart.resize();
 }
@@ -430,65 +532,125 @@ function renderRecommendCards(container, articles) {
 }
 
 
+// ==================== 搜索历史管理 ====================
+const MAX_HISTORY = 10;
+const HISTORY_KEY = 'health_kg_search_history';
+
+function getSearchHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+    catch (e) { return []; }
+}
+function saveSearchHistory(list) {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) {}
+}
+function addToHistory(keyword, category) {
+    const list = getSearchHistory();
+    const idx = list.findIndex(h => h.keyword === keyword && h.category === (category || ''));
+    if (idx !== -1) list.splice(idx, 1);
+    list.unshift({ keyword, category: category != null ? category : '' });
+    if (list.length > MAX_HISTORY) list.length = MAX_HISTORY;
+    saveSearchHistory(list);
+    renderHistoryPanel();
+}
+function clearHistory() {
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistoryPanel();
+}
+function renderHistoryPanel() {
+    const panel = document.getElementById('history-panel');
+    const tagsEl = document.getElementById('history-tags');
+    if (!panel || !tagsEl) return;
+    const list = getSearchHistory();
+    if (list.length === 0) { panel.classList.add('history-hidden'); return; }
+    panel.classList.remove('history-hidden');
+    const catLabels = ['疾病', '症状', '药品', '检查', '治疗'];
+    tagsEl.innerHTML = list.map(h => {
+        const catBadge = (h.category !== '' && h.category != null)
+            ? `<span style="font-size:10px;color:#888;">[${catLabels[h.category] || h.category}]</span>`
+            : '';
+        return `<span class="history-tag" data-kw="${h.keyword}" data-cat="${h.category}">${catBadge}${h.keyword}<span class="history-tag-del">&times;</span></span>`;
+    }).join('');
+    tagsEl.querySelectorAll('.history-tag').forEach(tag => {
+        tag.addEventListener('click', function(e) {
+            if (e.target.classList.contains('history-tag-del')) {
+                const kw = this.getAttribute('data-kw');
+                const cat = this.getAttribute('data-cat');
+                const list = getSearchHistory().filter(h => !(h.keyword === kw && h.category === cat));
+                saveSearchHistory(list);
+                renderHistoryPanel();
+                return;
+            }
+            const kw = this.getAttribute('data-kw');
+            const cat = this.getAttribute('data-cat');
+            document.getElementById('search-input').value = kw;
+            document.getElementById('category-filter').value = cat;
+            triggerSearch(kw, cat || null);
+        });
+    });
+}
+
 // ==================== 6. 搜索与建议 ====================
 let suggestDebounceTimer = null;
 
-async function triggerSearch(keyword) {
+async function triggerSearch(keyword, category) {
     if (!keyword || !keyword.trim()) return;
     keyword = keyword.trim();
+    if (category === '') category = null;
 
-    // 优先从后端加载该实体的图谱
-    const loaded = await loadGraphForEntity(keyword);
+    const loaded = await loadGraphForEntity(keyword, category);
     if (loaded) {
-        // 后端数据加载成功，加载详情
         updateDetails(keyword);
         userState.lastSearchedKeyword = keyword;
+        addToHistory(keyword, category);
         updateFootprint();
         updateUserIntelligenceFeed();
         return;
     }
 
-    // ★ 降级：在本地数据中搜索
-    const nodeIndex = localGraphData.nodes.findIndex(n => n.name === keyword);
-    if (nodeIndex !== -1) {
-        myChart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: nodeIndex });
+    // ★ 降级：在本地数据中搜索（按分类过滤）
+    let matchIdx = localGraphData.nodes.findIndex(n => n.name === keyword);
+    if (matchIdx !== -1 && category != null && localGraphData.nodes[matchIdx].category !== parseInt(category)) {
+        matchIdx = -1;
+    }
+    if (matchIdx !== -1) {
+        myChart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: matchIdx });
         updateDetails(keyword);
         userState.lastSearchedKeyword = keyword;
+        addToHistory(keyword, category);
         updateFootprint();
         updateUserIntelligenceFeed();
     } else {
-        alert(`系统暂未收录【${keyword}】。`);
+        const tip = category != null ? '（当前筛选条件下）' : '';
+        alert(`系统暂未收录【${keyword}】${tip}。`);
     }
 }
 
-// 搜索建议（带防抖）
-async function loadSuggestions(keyword) {
-    // 尝试后端 API
-    const data = await apiGet('/search/suggest?keyword=' + encodeURIComponent(keyword));
-    if (data && Array.isArray(data) && data.length > 0) {
-        return data;
-    }
+// 搜索建议（带防抖，支持分类筛选）
+async function loadSuggestions(keyword, category) {
+    let url = '/search/suggest?keyword=' + encodeURIComponent(keyword);
+    if (category != null && category !== '') url += '&category=' + encodeURIComponent(category);
+    const data = await apiGet(url);
+    if (data && Array.isArray(data) && data.length > 0) return data;
     return null;
 }
 
-function renderSuggestions(keyword, apiResults) {
+function renderSuggestions(keyword, apiResults, category) {
     const suggestPanel = document.getElementById('suggest-panel');
     if (apiResults) {
-        suggestPanel.innerHTML = apiResults
-            .slice(0, 10)
-            .map(i => `<div class="suggest-item">${i}</div>`)
-            .join('');
+        suggestPanel.innerHTML = apiResults.slice(0, 10).map(i => `<div class="suggest-item">${i}</div>`).join('');
         suggestPanel.classList.remove('suggest-hidden');
         return;
     }
 
-    // ★ 降级到本地过滤
-    const m = localKeywordList.filter(k => k.includes(keyword));
-    if (m.length > 0) {
-        suggestPanel.innerHTML = m
-            .slice(0, 10)
-            .map(i => `<div class="suggest-item">${i}</div>`)
-            .join('');
+    // ★ 降级到本地过滤（支持分类筛选）
+    let matches = localKeywordList.filter(k => k.includes(keyword));
+    if (category != null && category !== '') {
+        const catMap = {};
+        localGraphData.nodes.forEach(n => { catMap[n.name] = n.category; });
+        matches = matches.filter(k => catMap[k] === parseInt(category));
+    }
+    if (matches.length > 0) {
+        suggestPanel.innerHTML = matches.slice(0, 10).map(i => `<div class="suggest-item">${i}</div>`).join('');
         suggestPanel.classList.remove('suggest-hidden');
     } else {
         suggestPanel.classList.add('suggest-hidden');
@@ -497,6 +659,18 @@ function renderSuggestions(keyword, apiResults) {
 
 const searchInput = document.getElementById('search-input');
 const suggestPanel = document.getElementById('suggest-panel');
+const categoryFilter = document.getElementById('category-filter');
+
+// 分类筛选变更时，如果输入框已有内容则重新触发建议
+categoryFilter.addEventListener('change', () => {
+    const v = searchInput.value.trim();
+    if (!v) return;
+    clearTimeout(suggestDebounceTimer);
+    suggestDebounceTimer = setTimeout(async () => {
+        const apiResults = await loadSuggestions(v, categoryFilter.value);
+        renderSuggestions(v, apiResults, categoryFilter.value);
+    }, 200);
+});
 
 searchInput.addEventListener('input', (e) => {
     const v = e.target.value.trim();
@@ -504,12 +678,10 @@ searchInput.addEventListener('input', (e) => {
         suggestPanel.classList.add('suggest-hidden');
         return;
     }
-
-    // 防抖：200ms 内连续输入只发一次请求
     clearTimeout(suggestDebounceTimer);
     suggestDebounceTimer = setTimeout(async () => {
-        const apiResults = await loadSuggestions(v);
-        renderSuggestions(v, apiResults);
+        const apiResults = await loadSuggestions(v, categoryFilter.value);
+        renderSuggestions(v, apiResults, categoryFilter.value);
     }, 200);
 });
 
@@ -517,13 +689,15 @@ suggestPanel.addEventListener('click', (e) => {
     if (e.target.classList.contains('suggest-item')) {
         searchInput.value = e.target.innerText;
         suggestPanel.classList.add('suggest-hidden');
-        triggerSearch(searchInput.value);
+        triggerSearch(searchInput.value, categoryFilter.value);
     }
 });
 
 document.getElementById('search-btn').addEventListener('click', () => {
-    triggerSearch(searchInput.value);
+    triggerSearch(searchInput.value, categoryFilter.value);
 });
+
+document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
 
 
 // ==================== 7. 实体详情面板 ====================
@@ -559,13 +733,59 @@ function renderDetailsHTML(c, d) {
     c.innerHTML = `<h4>【${d.name}】</h4><b>实体类型：</b>${catDisplay}<br><br><b>医学定义：</b><br>${d.definition || '暂无'}<br><br><b>临床指南：</b><br>${d.indications || '暂无'}`;
 }
 
-// 图谱节点点击事件
-myChart.on('click', function (params) {
+// 图谱节点点击事件：查询详情 + 增量扩展邻居节点
+myChart.on('click', async function (params) {
     if (params.dataType === 'node') {
-        updateDetails(params.name);
-        userState.lastClickedNode = params.name;
+        const nodeName = params.name;
+        updateDetails(nodeName);
+        userState.lastClickedNode = nodeName;
         updateFootprint();
         updateUserIntelligenceFeed();
+
+        // 增量扩展：调 expand 接口获取被点击节点的邻居
+        if (currentGraphData && currentGraphData.nodes) {
+            const existingNames = new Set(currentGraphData.nodes.map(n => n.name));
+
+            // 如果点击的是不同于上一级的节点，裁剪旧节点：
+            // 保留 上一级节点及其邻居 + 当前节点及其邻居，移除无关的祖辈邻居
+            if (lastClickedNodeName && nodeName !== lastClickedNodeName) {
+                const parentNeighbors = new Set();
+                const clickedNeighbors = new Set();
+                currentGraphData.links.forEach(l => {
+                    if (l.source === lastClickedNodeName) parentNeighbors.add(l.target);
+                    if (l.target === lastClickedNodeName) parentNeighbors.add(l.source);
+                    if (l.source === nodeName) clickedNeighbors.add(l.target);
+                    if (l.target === nodeName) clickedNeighbors.add(l.source);
+                });
+                const keepNames = new Set([lastClickedNodeName, nodeName, ...parentNeighbors, ...clickedNeighbors]);
+                const trimmedNodes = currentGraphData.nodes.filter(n => keepNames.has(n.name));
+                const trimmedLinks = currentGraphData.links.filter(l =>
+                    keepNames.has(l.source) && keepNames.has(l.target)
+                );
+                currentGraphData = { nodes: trimmedNodes, links: trimmedLinks };
+            }
+
+            const newExistingNames = new Set(currentGraphData.nodes.map(n => n.name));
+            const expandUrl = '/graph/expand?entityName=' + encodeURIComponent(nodeName)
+                + '&exclude=' + encodeURIComponent([...newExistingNames].join(','));
+            const expandData = await apiGet(expandUrl);
+            if (expandData) {
+                const newPart = transformGraphData(expandData);
+                if (newPart && newPart.nodes && newPart.nodes.length > 0) {
+                    const trulyNew = newPart.nodes.filter(n => !newExistingNames.has(n.name));
+                    const selected = selectDiverseNodes(trulyNew, 8);
+                    const selNames = new Set(selected.map(n => n.name));
+                    const selLinks = (newPart.links || []).filter(l =>
+                        selNames.has(l.source) || selNames.has(l.target)
+                    );
+                    const mergedNodes = [...currentGraphData.nodes, ...selected];
+                    const mergedLinks = [...currentGraphData.links, ...selLinks];
+                    currentGraphData = { nodes: mergedNodes, links: mergedLinks };
+                    lastClickedNodeName = nodeName;
+                    renderGraph(currentGraphData);
+                }
+            }
+        }
     }
 });
 
