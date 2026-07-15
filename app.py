@@ -1,14 +1,43 @@
 """
 医疗知识图谱 — Flask 后端服务
-提供 6 个 RESTful API 接口
+提供 7 个 RESTful API 接口
 """
+import os
+import traceback
+
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from kg_service import KGService
 from user_service import UserService
-from config import NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD
+from config import NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD, CATEGORY_TO_LABEL
 
 app = Flask(__name__)
+CORS(app)
 app.config['JSON_AS_ASCII'] = False
+
+
+@app.after_request
+def enforce_utf8(response):
+    """强制所有响应使用 UTF-8 编码，防止 latin-1 编码报错"""
+    response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    return response
+
+
+# 捕获所有异常，返回 JSON 而非 HTML，彻底解决中文 latin-1 编码报错
+@app.errorhandler(Exception)
+def handle_exception(e):
+    traceback.print_exc()
+    return fail(str(e), 500)
+
+
+@app.errorhandler(404)
+def handle_404(e):
+    return fail("接口不存在", 404)
+
+
+@app.errorhandler(405)
+def handle_405(e):
+    return fail("请求方法不支持", 405)
 
 kg = KGService(NEO4J_URL, NEO4J_USER, NEO4J_PASSWORD)
 user_svc = UserService()
@@ -31,8 +60,12 @@ def search_suggest():
     if not keyword:
         return fail("keyword is required")
 
+    category = request.args.get('category', type=int)
+    if category is not None and category not in CATEGORY_TO_LABEL:
+        return fail("category must be 0-4 (0=Disease,1=Symptom,2=Drug,3=Examination,4=Treatment)")
+
     try:
-        names = kg.search_suggest(keyword)
+        names = kg.search_suggest(keyword, category=category)
         return ok(names)
     except Exception as e:
         return fail(str(e), 500)
@@ -49,10 +82,33 @@ def graph_data():
 
     depth = request.args.get('depth', 1, type=int)
 
+    category = request.args.get('category', type=int)
+    if category is not None and category not in CATEGORY_TO_LABEL:
+        return fail("category must be 0-4 (0=Disease,1=Symptom,2=Drug,3=Examination,4=Treatment)")
+
     try:
-        data = kg.get_graph_data(entity_name, depth)
+        data = kg.get_graph_data(entity_name, depth, category=category)
         if data is None:
             return fail(f"entity '{entity_name}' not found", 404)
+        return ok(data)
+    except Exception as e:
+        return fail(str(e), 500)
+
+
+# ================================================================
+# 接口 2.5：图谱增量扩展（点击节点展开邻居）
+# ================================================================
+@app.route('/api/v1/graph/expand')
+def graph_expand():
+    entity_name = request.args.get('entityName', '').strip()
+    exclude_raw = request.args.get('exclude', '')
+    exclude_ids = [x.strip() for x in exclude_raw.split(',') if x.strip()]
+
+    if not entity_name:
+        return fail("entityName is required")
+
+    try:
+        data = kg.get_expand_data(entity_name, exclude_ids)
         return ok(data)
     except Exception as e:
         return fail(str(e), 500)
@@ -153,11 +209,13 @@ if __name__ == '__main__':
     print("医疗知识图谱 API 服务")
     print(f"Neo4j: {NEO4J_URL}")
     print("接口:")
-    print("  GET  /api/v1/search/suggest?keyword=xxx")
-    print("  GET  /api/v1/graph/data?entityName=xxx&depth=1")
+    print("  GET  /api/v1/search/suggest?keyword=xxx[&category=0-4]")
+    print("  GET  /api/v1/graph/data?entityName=xxx&depth=1[&category=0-4]")
+    print("  GET  /api/v1/graph/expand?entityName=xxx&exclude=a,b")
     print("  GET  /api/v1/entity/detail?name=xxx")
     print("  POST /api/v1/user/register")
     print("  POST /api/v1/user/login")
     print("  GET  /api/v1/recommend/user-feed?username=xxx")
     print("=" * 50)
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    DEBUG = os.environ.get('FLASK_DEBUG', '0') == '1'
+    app.run(host='0.0.0.0', port=8080, debug=DEBUG)

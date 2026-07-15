@@ -42,22 +42,29 @@
         }
 
         /* 搜索区域样式 */
-        .search-section { 
-            position: relative; width: 90%; margin: 0 auto 20px auto; text-align: center; 
-        }
-        #search-input { 
-            width: 50%; padding: 12px; font-size: 16px; border: 1px solid #d9d9d9; border-radius: 4px 0 0 4px; outline: none;
-        }
-        #search-btn { 
-            padding: 12px 24px; font-size: 16px; background: #40a9ff; color: #fff; border: none; border-radius: 0 4px 4px 0; cursor: pointer; 
-        }
+        .search-section { width: 90%; margin: 0 auto 20px auto; }
+        .search-row { display: flex; justify-content: center; }
+        .search-input-area { position: relative; display: flex; width: 60%; }
+        #search-input { flex: 5; padding: 12px; font-size: 16px; border: 1px solid #d9d9d9; border-radius: 4px 0 0 4px; outline: none; min-width: 0; }
+        #search-input:focus { border-color: #40a9ff; }
+        #category-filter { flex: 2; padding: 12px 6px; font-size: 14px; border: 1px solid #d9d9d9; border-left: none; outline: none; background: #fff; cursor: pointer; min-width: 0; }
+        #search-btn { padding: 12px 24px; font-size: 16px; background: #40a9ff; color: #fff; border: none; border-radius: 0 4px 4px 0; cursor: pointer; white-space: nowrap; }
         #search-btn:hover { background: #096dd9; }
-        #suggest-panel { 
-            position: absolute; left: 20%; width: 50%; background: #fff; border: 1px solid #d9d9d9; border-top: none; text-align: left; z-index: 999; box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
-        }
+        #suggest-panel { position: absolute; left: 0; top: 100%; width: 100%; background: #fff; border: 1px solid #d9d9d9; border-top: none; text-align: left; z-index: 999; box-shadow: 0 4px 6px rgba(0,0,0,0.1); box-sizing: border-box; }
         .suggest-item { padding: 10px; cursor: pointer; }
         .suggest-item:hover { background-color: #e6f7ff; }
         .suggest-hidden { display: none; }
+
+        /* 搜索历史 */
+        .history-panel { margin-top: 8px; text-align: center; font-size: 13px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; }
+        .history-hidden { display: none; }
+        .history-label { color: #999; white-space: nowrap; }
+        .history-tag { display: inline-block; background: #f0f5ff; color: #1890ff; padding: 3px 8px; border-radius: 12px; cursor: pointer; font-size: 12px; border: 1px solid #d6e4ff; }
+        .history-tag:hover { background: #d6e4ff; color: #0050b3; }
+        .history-tag-del { margin-left: 4px; color: #999; font-weight: bold; }
+        .history-tag-del:hover { color: #ff4d4f; }
+        .history-clear-btn { background: none; border: none; color: #999; cursor: pointer; font-size: 12px; padding: 2px 6px; }
+        .history-clear-btn:hover { color: #ff4d4f; text-decoration: underline; }
 
         /* 中间主布局区域 */
         .main-layout { display: flex; width: 90%; margin: 0 auto; gap: 20px; }
@@ -69,16 +76,6 @@
         }
         #detail-panel h3 { margin-top: 0; color: #0050b3; border-bottom: 2px solid #e8e8e8; padding-bottom: 10px; }
         #detail-content { line-height: 1.6; color: #595959; font-size: 14px; }
-
-        /* 底部推荐区域 */
-        .recommend-section { width: 90%; margin: 30px auto; }
-        .recommend-section h3 { color: #262626; }
-        .card-container { display: flex; gap: 20px; }
-        .card { 
-            flex: 1; background: #fff; padding: 15px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #52c41a; cursor: pointer; transition: all 0.3s ease;
-        }
-        .card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.12); transform: translateY(-2px); background-color: #fafafa; }
-        .card h4 { margin: 0 0 10px 0; color: #262626; }
 
         /* 统一输入框通用样式 */
         .modal-input {
@@ -102,7 +99,7 @@
             </div>
 
             <div id="register-profile-panel" style="display: none; border-top: 1px dashed #eee; margin-top: 10px; padding-top: 10px;">
-                <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">1. 选择您的服务对象身份类型：</label>
+                <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">1. 选择您的身份类型：</label>
                 <select id="role-select" class="modal-input" style="margin-bottom:15px;">
                     <option value="医疗从业者">医疗从业者 (医生/护士)</option>
                     <option value="科研人员">科研人员 (教授/学者)</option>
@@ -145,9 +142,26 @@
         <h1>基于知识图谱的健康知识库构建系统</h1>
         
         <div class="search-section">
-            <input type="text" id="search-input" placeholder="输入疾病、症状或药物，如：高血压" autocomplete="off">
-            <button id="search-btn">搜索图谱</button>
-            <div id="suggest-panel" class="suggest-hidden"></div>
+            <div class="search-row">
+                <div class="search-input-area">
+                    <input type="text" id="search-input" placeholder="输入疾病、症状或药物，如：高血压" autocomplete="off">
+                    <select id="category-filter">
+                        <option value="">全部类型</option>
+                        <option value="0">疾病 (Disease)</option>
+                        <option value="1">症状 (Symptom)</option>
+                        <option value="2">药品 (Drug)</option>
+                        <option value="3">检查 (Examination)</option>
+                        <option value="4">治疗 (Treatment)</option>
+                    </select>
+                    <div id="suggest-panel" class="suggest-hidden"></div>
+                </div>
+                <button id="search-btn">搜索图谱</button>
+            </div>
+            <div id="history-panel" class="history-panel history-hidden">
+                <span class="history-label">🕐 最近搜索：</span>
+                <span id="history-tags"></span>
+                <button id="clear-history-btn" class="history-clear-btn">清空</button>
+            </div>
         </div>
 
         <div class="main-layout">
@@ -158,10 +172,6 @@
             </div>
         </div>
 
-        <div class="recommend-section">
-            <h3>🔬 专属科研文献与智能情报Feed流</h3>
-            <div class="card-container" id="recommend-cards"></div>
-        </div>
     </div>
 
     <script src="app.js"></script>
