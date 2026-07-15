@@ -77,16 +77,6 @@
         #detail-panel h3 { margin-top: 0; color: #0050b3; border-bottom: 2px solid #e8e8e8; padding-bottom: 10px; }
         #detail-content { line-height: 1.6; color: #595959; font-size: 14px; }
 
-        /* 底部推荐区域 */
-        .recommend-section { width: 90%; margin: 30px auto; }
-        .recommend-section h3 { color: #262626; }
-        .card-container { display: flex; gap: 20px; }
-        .card { 
-            flex: 1; background: #fff; padding: 15px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #52c41a; cursor: pointer; transition: all 0.3s ease;
-        }
-        .card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.12); transform: translateY(-2px); background-color: #fafafa; }
-        .card h4 { margin: 0 0 10px 0; color: #262626; }
-
         /* 统一输入框通用样式 */
         .modal-input {
             width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #d9d9d9; border-radius: 4px; box-sizing: border-box; outline: none;
@@ -109,7 +99,7 @@
             </div>
 
             <div id="register-profile-panel" style="display: none; border-top: 1px dashed #eee; margin-top: 10px; padding-top: 10px;">
-                <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">1. 选择您的服务对象身份类型：</label>
+                <label style="display:block; margin-bottom:5px; font-weight:bold; font-size:13px;">1. 选择您的身份类型：</label>
                 <select id="role-select" class="modal-input" style="margin-bottom:15px;">
                     <option value="医疗从业者">医疗从业者 (医生/护士)</option>
                     <option value="科研人员">科研人员 (教授/学者)</option>
@@ -182,10 +172,6 @@
             </div>
         </div>
 
-        <div class="recommend-section">
-            <h3>🔬 专属科研文献与智能情报Feed流</h3>
-            <div class="card-container" id="recommend-cards"></div>
-        </div>
     </div>
 
     <script src="app.js"></script>

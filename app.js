@@ -1,5 +1,5 @@
 // ==================== 0. API 配置与工具函数 ====================
-const API_BASE = 'http://192.168.62.98:8080/api/v1';
+const API_BASE = 'http://192.168.62.138:8080/api/v1';
 const API_TIMEOUT_MS = 5000;
 
 /**
@@ -337,16 +337,6 @@ function updateLocalKeywordList(nodes) {
     }
 }
 
-// 模拟推荐算法（后端不可用时的降级方案）
-function generateMockIntelligenceFeed() {
-    const mainPref = userState.preferences[0] || '医学综合前沿';
-    return [
-        { title: `【根据${userState.role}偏好检索推荐】关于《${mainPref}》领域下【${userState.lastSearchedKeyword}】的最新科研指南报告`, source: '《The Lancet (柳叶刀)》', url: 'https://www.thelancet.com' },
-        { title: `【多维图谱足迹跟踪】针对您近期高频查看的实体【${userState.lastClickedNode}】的交叉关联医学文献推理分析`, source: '《Nature Medicine (自然医学)》', url: 'https://www.nature.com' }
-    ];
-}
-
-
 // ==================== 4. 登录与注册控制流 ====================
 const globalAuthCenter = document.getElementById('global-auth-center');
 const mainAppContent = document.getElementById('main-app-content');
@@ -481,7 +471,6 @@ function enterMainSystem(username, role, preferences) {
     document.getElementById('logout-btn').addEventListener('click', () => { location.reload(); });
 
     renderHistoryPanel();
-    updateUserIntelligenceFeed();
     myChart.resize();
 }
 
@@ -492,43 +481,6 @@ function updateFootprint() {
         traitsEl.innerText = `足迹：搜过[${userState.lastSearchedKeyword}] | 点过[${userState.lastClickedNode}]`;
         traitsEl.style.cssText = 'font-size:12px;color:#1890ff;margin-left:15px;background:#e6f7ff;padding:2px 6px;border-radius:4px;';
     }
-}
-
-
-// ==================== 5. 推荐、查询与特征捕获逻辑 ====================
-async function updateUserIntelligenceFeed() {
-    const cardContainer = document.getElementById('recommend-cards');
-    if (!userState.isLoggedIn) return;
-
-    cardContainer.innerHTML = `<p style="color:#888; font-size:14px;">智能化Feed流重组计算中...</p>`;
-
-    // 优先调用后端推荐 API
-    const feed = await apiGet('/recommend/user-feed?username=' + encodeURIComponent(userState.username));
-    if (feed && Array.isArray(feed) && feed.length > 0) {
-        renderRecommendCards(cardContainer, feed);
-        return;
-    }
-
-    // ★ 降级到本地模拟推荐
-    const mockFeed = generateMockIntelligenceFeed();
-    renderRecommendCards(cardContainer, mockFeed);
-}
-
-function renderRecommendCards(container, articles) {
-    container.innerHTML = articles.map(art => `
-        <div class="card" data-url="${art.url || '#'}">
-            <h4>${art.title}</h4>
-            <p style="color: #0050b3; font-size: 12px; margin-bottom:0;">精准学术源：${art.source} 🔗 <span style="float:right; color:#52c41a; font-weight:bold;">三维权重融合度 99.8%</span></p>
-        </div>
-    `).join('');
-
-    container.querySelectorAll('.card').forEach(card => {
-        card.addEventListener('click', function () {
-            if (this.getAttribute('data-url') !== '#') {
-                window.open(this.getAttribute('data-url'), '_blank');
-            }
-        });
-    });
 }
 
 
@@ -603,7 +555,6 @@ async function triggerSearch(keyword, category) {
         userState.lastSearchedKeyword = keyword;
         addToHistory(keyword, category);
         updateFootprint();
-        updateUserIntelligenceFeed();
         return;
     }
 
@@ -618,7 +569,6 @@ async function triggerSearch(keyword, category) {
         userState.lastSearchedKeyword = keyword;
         addToHistory(keyword, category);
         updateFootprint();
-        updateUserIntelligenceFeed();
     } else {
         const tip = category != null ? '（当前筛选条件下）' : '';
         alert(`系统暂未收录【${keyword}】${tip}。`);
@@ -740,7 +690,6 @@ myChart.on('click', async function (params) {
         updateDetails(nodeName);
         userState.lastClickedNode = nodeName;
         updateFootprint();
-        updateUserIntelligenceFeed();
 
         // 增量扩展：调 expand 接口获取被点击节点的邻居
         if (currentGraphData && currentGraphData.nodes) {
